@@ -1,5 +1,5 @@
 name:                quantizer
-version:             0.3.1.0
+version:             0.4.0.0
 synopsis:            Library to provide the behaviour similar to quantum states superposition. 
 description:         Has three modules with similar functionality. The functions provide the somewhat generalized way to round the numbers based on some data.
 homepage:            https://hackage.haskell.org/package/quantizer

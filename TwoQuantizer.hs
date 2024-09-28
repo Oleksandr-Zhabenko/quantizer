@@ -1,6 +1,6 @@
 -- |
 -- Module      :  TwoQuantizer
--- Copyright   :  (c) OleksandrZhabenko 2022-2023
+-- Copyright   :  (c) OleksandrZhabenko 2022-2024
 -- License     :  MIT
 -- Stability   :  Experimental
 -- Maintainer  :  oleksandr.zhabenko@yahoo.com
@@ -10,7 +10,7 @@
 -- ListQuantizer module, the results  in every function  here depend on the two values, 
 -- which the point is located in between. Defined for just positive real numbers of 'Double' type.
 
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude, BangPatterns #-}
 
 module TwoQuantizer where
 
@@ -21,7 +21,7 @@ import Numeric.Stats (meanD)
 import GHC.Float
 import GHC.Real
 import GHC.List
-
+import Data.List (partition) 
 
 round2 
   :: Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is when the square of the third paremeter is equal to  the product of the second one and the fourth one. 
@@ -45,18 +45,19 @@ round2L ctrl ts x
  | null us = y0
  | x < y = fromJust . round2 ctrl y0 y $ x
  | otherwise = y
-  where (ks, us) = span (<x) ts
-        y = head us
-        y0 = last ks
+  where (ks, us) = partition (<x) ts
+        y = minimum us
+        y0 = maximum ks
 
 twoQuantizer 
  :: Bool  -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. 
  -> [Double] 
  -> [Double] 
  -> [Double]
-twoQuantizer ctrl needs xs = map (round2L ctrl needs) ys
-  where k = meanD needs / meanD xs
-        ys = map (*k) xs
+twoQuantizer ctrl needs xs = map ((round2L ctrl needs) . (*k)) xs
+  where !k 
+           | meanD xs == 0 = error "TwoQuantizer.twoQuantizer: division by zero!"
+           | otherwise = meanD needs / meanD xs
 
 round2G 
  :: (Ord a) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -83,9 +84,9 @@ round2GL ctrl f ts x
  | null us = y0
  | x < y = fromJust . round2G ctrl f y0 y $ x
  | otherwise = y
-  where (ks, us) = span (<x) ts
-        y = head us
-        y0 = last ks
+  where (ks, us) = partition (<x) ts
+        y = minimum us
+        y0 = maximum ks
 
 twoQuantizerG 
  :: (Ord a, Floating a) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -93,9 +94,10 @@ twoQuantizerG
  -> [a] 
  -> [a] 
  -> [a]
-twoQuantizerG ctrl f needs xs = map (round2GL ctrl f needs) ys
-  where k = meanF2 needs 0 0 / meanF2 xs 0 0
-        ys = map (*k) xs
+twoQuantizerG ctrl f needs xs = map ((round2GL ctrl f needs) . (*k)) xs
+  where !k 
+           | meanF2 xs 0 0 == 0 = error "TwoQuantizer.twoQuantizerG: division by zero!"
+           | otherwise = meanF2 needs 0 0 / meanF2 xs 0 0
 
 round2GM 
  :: (Ord a, Monad m) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -124,9 +126,9 @@ round2GLM ctrl f ts x
  | null us = return y0
  | x < y = fmap fromJust . round2GM ctrl f y0 y $ x 
  | otherwise = return y
-  where (ks, us) = span (<x) ts
-        y = head us
-        y0 = last ks
+  where (ks, us) = partition (<x) ts
+        y = minimum us
+        y0 = maximum ks
 
 -- | Simple arithmetic mean. Is vulnerable to floating point rounding error so if possible use just
 -- for double-precision values.
@@ -135,8 +137,8 @@ meanF2
  -> a 
  -> a 
  -> a
-meanF2 (t:ts) s l = meanF2 ts (s + t) (l + 1) 
-meanF2 _ s l = s / l
+meanF2 (!t:ts) !s !l = meanF2 ts (s + t) (l + 1) 
+meanF2 _ !s !l = s / l
 
 twoQuantizerGM 
  :: (Ord a, Floating a, Monad m) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -144,7 +146,8 @@ twoQuantizerGM
  -> [a] 
  -> [a] 
  -> m [a]
-twoQuantizerGM ctrl f needs xs = mapM (round2GLM ctrl f needs) ys
-  where k = meanF2 needs 0 0  / meanF2 xs 0 0
-        ys = map (*k) xs
+twoQuantizerGM ctrl f needs xs = mapM ((round2GLM ctrl f needs) . (*k)) xs
+  where !k 
+           | meanF2 xs 0 0 == 0 = error "TwoQuantizer.twoQuantizerGM: division by zero!"
+           | otherwise = meanF2 needs 0 0  / meanF2 xs 0 0
 

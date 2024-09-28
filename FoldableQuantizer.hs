@@ -13,7 +13,7 @@
 -- TwoQuantizer module, the results  in every function  here depend not just on the two values, 
 -- which the point is located in between, but on the whole structure. Defined for just positive real numbers of 'Double' type.
 
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude, BangPatterns #-}
 
 module FoldableQuantizer where
 
@@ -42,9 +42,9 @@ round2G bool f xs z
  | F.null us = Just t
  | otherwise = Just (case f xs z of { GT -> u; LT -> t; EQ -> if bool then u else t })
    where (x, y) = fromJust . minMax11 $ xs
-         (ts,us) = IL.span (<z) xs
-         t = fromJust . IL.safeLastG $ ts -- This can cause some perfarmance downgrade because of the general implementation being not optimized.
-         u = fromJust . IL.safeHeadG $ us
+         (ts,us) = IL.partitionG (<z) xs
+         t = F.maximum ts
+         u = F.minimum us
 
 foldableQuantizerG 
  :: (Ord a, Floating a, IL.InsertLeft t1 a, Monoid (t1 a), F.Foldable t2) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -53,7 +53,10 @@ foldableQuantizerG
  -> t2 a
  -> [a]
 foldableQuantizerG ctrl f needs xs = map (fromJust . round2G ctrl f needs) ys
-  where k = Q.meanF2 (F.toList needs) 0 0 / Q.meanF2 (F.toList xs) 0 0
+  where !k 
+          | y == 0 = error "FoldableQuantizer.foldableQuantizerG: division by zero!"
+          | otherwise = Q.meanF2 (F.toList needs) 0 0 / y
+                where !y = Q.meanF2 (F.toList xs) 0 0
         ys = F.foldr (\t ts -> t * k : ts) [] xs
 
 round2GM 
@@ -66,15 +69,15 @@ round2GM bool f xs z
  | z `F.elem` xs = return . Just $ z
  | F.length xs < 2 = return Nothing
  | z < x || z > y = return Nothing
- | F.null ts = return u
- | F.null us = return t
+ | F.null ts = return . Just $ u
+ | F.null us = return . Just $ t
  | otherwise = do
      q <- f xs z
-     case q of { GT -> return u; LT -> return t; EQ -> return (if bool then u else t)}
+     case q of { GT -> return . Just $ u; LT -> return . Just $ t; EQ -> return . Just $ if bool then u else t}
    where (x, y) = fromJust . minMax11 $ xs
-         (ts,us) = IL.span (<z) xs
-         t = IL.safeLastG ts --  This can cause some perfarmance downgrade because of the general implementation being not optimized.
-         u = IL.safeHeadG us
+         (ts,us) = IL.partitionG (<z) xs
+         t = F.maximum ts 
+         u = F.minimum us
 
 foldableQuantizerGM 
  :: (Ord a, Floating a, Monad m, IL.InsertLeft t1 a, Monoid (t1 a), F.Foldable t2) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -83,6 +86,9 @@ foldableQuantizerGM
  -> t2 a 
  -> m [a]
 foldableQuantizerGM ctrl f needs xs = mapM (fmap fromJust . round2GM ctrl f needs) ys
-  where k = Q.meanF2 (F.toList needs) 0 0  / Q.meanF2 (F.toList xs) 0 0
+  where !k 
+           | y == 0 = error "FoldableQuantizer.foldableQuantizerGM: division by zero!"
+           | otherwise = Q.meanF2 (F.toList needs) 0 0  / y
+               where !y = Q.meanF2 (F.toList xs) 0 0 
         ys = F.foldr (\u us -> u * k : us) [] xs
 

@@ -12,7 +12,7 @@
 -- which the point is located in between, but on the whole list. Defined for just positive real numbers of 'Double' type.
 
 
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude, BangPatterns #-}
 
 module ListQuantizer where
 
@@ -24,6 +24,7 @@ import GHC.Num
 import Data.Maybe
 import qualified TwoQuantizer as Q (meanF2)
 import Data.MinMax1 (minMax11)
+import Data.List (partition) 
 
 -- | A better suited variant for 'FoldableQuantizer.round2G' for lists. 
 round2GL
@@ -32,7 +33,7 @@ round2GL
  -> [a] 
  -> a 
  -> Maybe a -- ^ The @a@ value (in 'Just' case) can be equal just to the one of the two first @a@ arguments.
-round2GL bool f xs z 
+round2GL bool f xs@(w:_:_) z 
  | z `elem` xs = Just z
  | length xs < 2 = Nothing
  | z < x || z > y = Nothing
@@ -40,9 +41,9 @@ round2GL bool f xs z
  | null us = Just t
  | otherwise = Just (case f xs z of { GT -> u; LT -> t; EQ -> if bool then u else t })
      where (x, y) = fromJust . minMax11 $ xs
-           (ts,us) = span (<z) xs
-           t = last ts
-           u = head us
+           (ts,us) = partition (<z) xs
+           t = maximum ts
+           u = minimum us
 
 foldableQuantizerGL 
  :: (Ord a, Floating a) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -50,8 +51,10 @@ foldableQuantizerGL
  -> [a] 
  -> [a]
  -> [a]
-foldableQuantizerGL ctrl f needs xs = map (fromJust . round2GL ctrl f needs) ys
-  where k = Q.meanF2 needs 0 0 / Q.meanF2 xs 0 0
+foldableQuantizerGL ctrl f needs xs = map (fromJust . round2GL ctrl f needs . (*k)) xs
+  where !k 
+           | Q.meanF2 xs 0 0 == 0 = error "ListQuantizer.foldableQuantizerGL: division by zero!"
+           | otherwise = Q.meanF2 needs 0 0 / Q.meanF2 xs 0 0
         ys = foldr (\t ts -> t * k : ts) [] xs
 
 round2GML 
@@ -70,9 +73,9 @@ round2GML bool f xs z
      q <- f xs z
      case q of { GT -> return u; LT -> return t; EQ -> return (if bool then u else t)}
    where (x, y) = fromJust . minMax11 $ xs
-         (ts,us) = span (<z) xs
-         t = if null ts then Nothing else Just . last $ ts
-         u = if null us then Nothing else Just . head $ us
+         (ts,us) = partition (<z) xs
+         t = if null ts then Nothing else Just . maximum $ ts
+         u = if null us then Nothing else Just . minimum $ us
 
 foldableQuantizerGML 
  :: (Ord a, Floating a, Monad m) => Bool -- ^ If 'True' then the function rounds the result in the ambiguous situation to the greater value. The ambigous situation is defined by the second argument.
@@ -80,7 +83,9 @@ foldableQuantizerGML
  -> [a] 
  -> [a] 
  -> m [a]
-foldableQuantizerGML ctrl f needs xs = mapM (fmap fromJust . round2GML ctrl f needs) ys
-  where k = Q.meanF2 needs 0 0  / Q.meanF2 xs 0 0
+foldableQuantizerGML ctrl f needs xs = mapM (fmap fromJust . round2GML ctrl f needs . (*k)) xs
+  where !k 
+           | Q.meanF2 xs 0 0 == 0 = error "ListQuantizer.foldableQuantizerGML: division by zero!"
+           | otherwise = Q.meanF2 needs 0 0  / Q.meanF2 xs 0 0
         ys = foldr (\u us -> u * k : us) [] xs
 

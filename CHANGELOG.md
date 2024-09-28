@@ -35,3 +35,7 @@ functions. Since the version 0.3.0.0, the project is devoted to fondation Gastro
 
 * Third version revised C. Switched to more lightweight dependencies of minmax and monoid-insertleft.  Added Git repository with bug-tracking.
 
+## 0.4.0.0 -- 2024-09-28
+
+* Fourth version. Fixed incorrect definitions of the structures traversions that led to incorrect results in general. Added explicit error messages.
+
